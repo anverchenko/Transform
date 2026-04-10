@@ -6,7 +6,7 @@ pip install pyinstaller
 
 echo.
 echo === Building .exe ===
-python -m PyInstaller --onefile --name transcribe --windowed --exclude-module torch.cuda --add-data "%LOCALAPPDATA%\Python\pythoncore-3.14-64\Lib\site-packages\whisper;whisper" transcribe.py
+python -m PyInstaller --onefile --name transcribe --windowed --exclude-module torch.cuda --additional-hooks-dir . transcribe.py
 
 echo.
 echo === Done! ===
