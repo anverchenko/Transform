@@ -55,17 +55,75 @@ class App:
         self.model_var = tk.StringVar(value="large")
         ttk.Combobox(root, values=MODELS, textvariable=self.model_var, width=10, state="readonly").grid(row=2, column=1, sticky="w", **pad)
 
+        # --- Advanced settings toggle ---
+        self.show_advanced = tk.BooleanVar(value=False)
+        tk.Checkbutton(root, text="Advanced model settings", variable=self.show_advanced, command=self.toggle_advanced).grid(row=3, column=0, columnspan=3, sticky="w", padx=10)
+
+        # --- Advanced frame ---
+        self.adv_frame = tk.LabelFrame(root, text="Model parameters", padx=8, pady=5)
+
+        def row(label, widget_fn, r, hint=""):
+            tk.Label(self.adv_frame, text=label).grid(row=r, column=0, sticky="w", pady=2)
+            widget_fn(r)
+            if hint:
+                tk.Label(self.adv_frame, text=hint, fg="gray", font=("", 8)).grid(row=r, column=2, sticky="w", padx=5)
+
+        # no_speech_threshold
+        self.no_speech_var = tk.DoubleVar(value=0.3)
+        def make_no_speech(r):
+            tk.Scale(self.adv_frame, variable=self.no_speech_var, from_=0.0, to=1.0, resolution=0.05,
+                     orient="horizontal", length=200).grid(row=r, column=1)
+        row("No speech threshold:", make_no_speech, 0, "Lower = include more quiet parts")
+
+        # logprob_threshold
+        self.logprob_var = tk.DoubleVar(value=-1.5)
+        def make_logprob(r):
+            tk.Scale(self.adv_frame, variable=self.logprob_var, from_=-3.0, to=0.0, resolution=0.1,
+                     orient="horizontal", length=200).grid(row=r, column=1)
+        row("Logprob threshold:", make_logprob, 1, "Lower = accept low-confidence text")
+
+        # compression_ratio_threshold
+        self.compression_var = tk.DoubleVar(value=3.0)
+        def make_compression(r):
+            tk.Scale(self.adv_frame, variable=self.compression_var, from_=1.0, to=5.0, resolution=0.1,
+                     orient="horizontal", length=200).grid(row=r, column=1)
+        row("Compression ratio:", make_compression, 2, "Higher = allow mixed/varied content")
+
+        # condition_on_previous_text
+        self.condition_var = tk.BooleanVar(value=True)
+        def make_condition(r):
+            tk.Checkbutton(self.adv_frame, variable=self.condition_var).grid(row=r, column=1, sticky="w")
+        row("Use previous context:", make_condition, 3, "Helps coherence between segments")
+
+        # word_timestamps
+        self.word_ts_var = tk.BooleanVar(value=True)
+        def make_word_ts(r):
+            tk.Checkbutton(self.adv_frame, variable=self.word_ts_var).grid(row=r, column=1, sticky="w")
+        row("Word timestamps:", make_word_ts, 4, "Precise timing per word")
+
+        # fp16
+        self.fp16_var = tk.BooleanVar(value=False)
+        def make_fp16(r):
+            tk.Checkbutton(self.adv_frame, variable=self.fp16_var).grid(row=r, column=1, sticky="w")
+        row("FP16 (GPU only):", make_fp16, 5, "Faster on GPU, disable for CPU")
+
         # --- Start button ---
         self.btn = tk.Button(root, text="Start Transcription", command=self.start, bg="#4CAF50", fg="white", width=20)
-        self.btn.grid(row=3, column=0, columnspan=3, pady=10)
+        self.btn.grid(row=5, column=0, columnspan=3, pady=10)
 
         # --- Status ---
         self.status_var = tk.StringVar(value="Ready")
-        tk.Label(root, textvariable=self.status_var, fg="gray").grid(row=4, column=0, columnspan=3, **pad)
+        tk.Label(root, textvariable=self.status_var, fg="gray").grid(row=6, column=0, columnspan=3, **pad)
 
         # --- Progress bar ---
         self.progress = ttk.Progressbar(root, mode="indeterminate", length=400)
-        self.progress.grid(row=5, column=0, columnspan=3, **pad)
+        self.progress.grid(row=7, column=0, columnspan=3, **pad)
+
+    def toggle_advanced(self):
+        if self.show_advanced.get():
+            self.adv_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+        else:
+            self.adv_frame.grid_remove()
 
     def browse(self):
         path = filedialog.askopenfilename(
@@ -105,12 +163,12 @@ class App:
                 language=lang_raw,
                 task="transcribe",
                 suppress_tokens=[],
-                no_speech_threshold=0.3,
-                logprob_threshold=-1.5,
-                compression_ratio_threshold=3.0,
-                condition_on_previous_text=True,
-                word_timestamps=True,
-                fp16=False,
+                no_speech_threshold=self.no_speech_var.get(),
+                logprob_threshold=self.logprob_var.get(),
+                compression_ratio_threshold=self.compression_var.get(),
+                condition_on_previous_text=self.condition_var.get(),
+                word_timestamps=self.word_ts_var.get(),
+                fp16=self.fp16_var.get(),
                 verbose=False,
             )
 
