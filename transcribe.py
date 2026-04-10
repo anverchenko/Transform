@@ -1,9 +1,9 @@
 import whisper
-import sys
 import os
-import argparse
+import threading
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
 
-# Available languages with friendly names
 LANGUAGES = {
     "uk": "Українська",
     "en": "English",
@@ -21,105 +21,131 @@ LANGUAGES = {
 
 MODELS = ["tiny", "base", "small", "medium", "large"]
 
-def list_languages():
-    print("Available languages:")
-    for code, name in LANGUAGES.items():
-        marker = " (default)" if code == "uk" else ""
-        print(f"  {code}  —  {name}{marker}")
-
 def format_time(seconds):
-    """Convert seconds to HH:MM:SS format"""
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
-def transcribe(audio_path, lang, model_name):
-    # Check if file exists
-    if not os.path.exists(audio_path):
-        print(f"Error: file '{audio_path}' not found")
-        sys.exit(1)
 
-    file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-    print(f"File: {audio_path} ({file_size_mb:.1f} MB)")
-    print(f"Language: {LANGUAGES.get(lang, lang)}")
-    print(f"Model: {model_name}")
-    print(f"Loading model (first run downloads it)...")
+class App:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Transform — Audio Transcription")
+        self.root.resizable(False, False)
 
-    model = whisper.load_model(model_name)
+        pad = {"padx": 10, "pady": 5}
 
-    print(f"Transcribing... (large files may take a few minutes)")
+        # --- File selection ---
+        tk.Label(root, text="Audio file:").grid(row=0, column=0, sticky="w", **pad)
+        self.file_var = tk.StringVar()
+        tk.Entry(root, textvariable=self.file_var, width=45).grid(row=0, column=1, **pad)
+        tk.Button(root, text="Browse...", command=self.browse).grid(row=0, column=2, **pad)
 
-    result = model.transcribe(
-        audio_path,
-        language=lang,
-        task="transcribe",
+        # --- Language ---
+        tk.Label(root, text="Language:").grid(row=1, column=0, sticky="w", **pad)
+        self.lang_var = tk.StringVar(value="uk")
+        lang_options = [f"{code} — {name}" for code, name in LANGUAGES.items()]
+        self.lang_combo = ttk.Combobox(root, values=lang_options, textvariable=self.lang_var, width=20, state="readonly")
+        self.lang_combo.current(0)
+        self.lang_combo.grid(row=1, column=1, sticky="w", **pad)
 
-        # --- FULL transcription settings ---
-        suppress_tokens=[],          # do NOT suppress any tokens (filler words, "е", "м", "хм")
-        no_speech_threshold=0.3,     # low threshold — don't skip quiet/uncertain parts
-        logprob_threshold=-1.5,      # accept even low-confidence segments
-        compression_ratio_threshold=3.0,  # allow varied/mixed-language content
+        # --- Model ---
+        tk.Label(root, text="Model:").grid(row=2, column=0, sticky="w", **pad)
+        self.model_var = tk.StringVar(value="large")
+        ttk.Combobox(root, values=MODELS, textvariable=self.model_var, width=10, state="readonly").grid(row=2, column=1, sticky="w", **pad)
 
-        # --- Quality settings ---
-        condition_on_previous_text=True,  # use context from previous segments
-        word_timestamps=True,             # enable word-level timestamps
-        fp16=False,                       # CPU-safe mode
-        verbose=False,
-    )
+        # --- Start button ---
+        self.btn = tk.Button(root, text="Start Transcription", command=self.start, bg="#4CAF50", fg="white", width=20)
+        self.btn.grid(row=3, column=0, columnspan=3, pady=10)
 
-    segments = result["segments"]
+        # --- Status ---
+        self.status_var = tk.StringVar(value="Ready")
+        tk.Label(root, textvariable=self.status_var, fg="gray").grid(row=4, column=0, columnspan=3, **pad)
 
-    # Build output lines with timecodes
-    lines = []
-    for seg in segments:
-        start = format_time(seg["start"])
-        end   = format_time(seg["end"])
-        text  = seg["text"].strip()
-        if text:
-            lines.append(f"[{start} → {end}]  {text}")
+        # --- Progress bar ---
+        self.progress = ttk.Progressbar(root, mode="indeterminate", length=400)
+        self.progress.grid(row=5, column=0, columnspan=3, **pad)
 
-    output_text = "\n".join(lines)
+    def browse(self):
+        path = filedialog.askopenfilename(
+            title="Select audio file",
+            filetypes=[("Audio files", "*.mp3 *.mp4 *.m4a *.wav *.ogg *.flac *.webm"), ("All files", "*.*")]
+        )
+        if path:
+            self.file_var.set(path)
 
-    # Print to terminal
-    print("\n--- Transcription ---\n")
-    print(output_text)
+    def start(self):
+        audio_path = self.file_var.get().strip()
+        if not audio_path:
+            messagebox.showerror("Error", "Please select an audio file first.")
+            return
+        if not os.path.exists(audio_path):
+            messagebox.showerror("Error", f"File not found:\n{audio_path}")
+            return
 
-    # Save to .txt file
-    output_path = os.path.splitext(audio_path)[0] + "_transcription.txt"
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(output_text)
+        # Run in background thread so UI doesn't freeze
+        self.btn.config(state="disabled")
+        self.progress.start(10)
+        self.status_var.set("Working...")
+        thread = threading.Thread(target=self.run, args=(audio_path,), daemon=True)
+        thread.start()
 
-    print(f"\n--- Done ---")
-    print(f"Segments: {len(segments)}")
-    print(f"Saved to: {output_path}")
+    def run(self, audio_path):
+        try:
+            lang_raw = self.lang_var.get().split(" — ")[0]  # extract code like "uk"
+            model_name = self.model_var.get()
+
+            self.status_var.set("Loading model...")
+            model = whisper.load_model(model_name)
+
+            self.status_var.set("Transcribing...")
+            result = model.transcribe(
+                audio_path,
+                language=lang_raw,
+                task="transcribe",
+                suppress_tokens=[],
+                no_speech_threshold=0.3,
+                logprob_threshold=-1.5,
+                compression_ratio_threshold=3.0,
+                condition_on_previous_text=True,
+                word_timestamps=True,
+                fp16=False,
+                verbose=False,
+            )
+
+            segments = result["segments"]
+            lines = []
+            for seg in segments:
+                start = format_time(seg["start"])
+                end   = format_time(seg["end"])
+                text  = seg["text"].strip()
+                if text:
+                    lines.append(f"[{start} → {end}]  {text}")
+
+            output_path = os.path.splitext(audio_path)[0] + "_transcription.txt"
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+
+            self.root.after(0, self.on_success, output_path, len(segments))
+
+        except Exception as e:
+            self.root.after(0, self.on_error, str(e))
+
+    def on_success(self, output_path, count):
+        self.progress.stop()
+        self.btn.config(state="normal")
+        self.status_var.set(f"Done! {count} segments saved.")
+        messagebox.showinfo("Done!", f"Transcription complete!\n\nSaved to:\n{output_path}")
+
+    def on_error(self, error_msg):
+        self.progress.stop()
+        self.btn.config(state="normal")
+        self.status_var.set("Error.")
+        messagebox.showerror("Error", f"Something went wrong:\n\n{error_msg}")
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Full audio transcription with timecodes (Whisper)",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
-    parser.add_argument("audio", nargs="?", help="Path to audio file")
-    parser.add_argument(
-        "--lang", default="uk", choices=LANGUAGES.keys(), metavar="LANG",
-        help="Language code (default: uk)\nUse --list-langs to see all options"
-    )
-    parser.add_argument(
-        "--model", default="large", choices=MODELS, metavar="MODEL",
-        help="Whisper model (default: large)\nOptions: tiny, base, small, medium, large\nLarger = more accurate but slower"
-    )
-    parser.add_argument("--list-langs", action="store_true", help="Show available languages and exit")
-
-    args = parser.parse_args()
-
-    if args.list_langs:
-        list_languages()
-        sys.exit(0)
-
-    if not args.audio:
-        parser.print_help()
-        print()
-        list_languages()
-        sys.exit(1)
-
-    transcribe(args.audio, args.lang, args.model)
+    root = tk.Tk()
+    app = App(root)
+    root.mainloop()
