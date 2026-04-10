@@ -71,14 +71,14 @@ class App:
                 tk.Label(self.adv_frame, text=hint, fg="gray", font=("", 8)).grid(row=r, column=2, sticky="w", padx=5)
 
         # no_speech_threshold
-        self.no_speech_var = tk.DoubleVar(value=0.3)
+        self.no_speech_var = tk.DoubleVar(value=1.0)
         def make_no_speech(r):
             tk.Scale(self.adv_frame, variable=self.no_speech_var, from_=0.0, to=1.0, resolution=0.05,
                      orient="horizontal", length=200).grid(row=r, column=1)
-        row("No speech threshold:", make_no_speech, 0, "Lower = include more quiet parts")
+        row("No speech threshold:", make_no_speech, 0, "Higher = keep more silent parts (1.0 = keep all)")
 
         # logprob_threshold
-        self.logprob_var = tk.DoubleVar(value=-1.5)
+        self.logprob_var = tk.DoubleVar(value=-3.0)
         def make_logprob(r):
             tk.Scale(self.adv_frame, variable=self.logprob_var, from_=-3.0, to=0.0, resolution=0.1,
                      orient="horizontal", length=200).grid(row=r, column=1)
