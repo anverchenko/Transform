@@ -160,13 +160,16 @@ class App:
             model = whisper.load_model(model_name)
 
             self.status_var.set("Transcribing...")
+            no_speech = self.no_speech_var.get()
+            logprob = self.logprob_var.get()
+
             result = model.transcribe(
                 audio_path,
                 language=lang_raw,
                 task="transcribe",
                 suppress_tokens=[],
-                no_speech_threshold=self.no_speech_var.get(),
-                logprob_threshold=self.logprob_var.get(),
+                no_speech_threshold=None if no_speech >= 1.0 else no_speech,
+                logprob_threshold=None if logprob <= -3.0 else logprob,
                 compression_ratio_threshold=self.compression_var.get(),
                 condition_on_previous_text=self.condition_var.get(),
                 word_timestamps=self.word_ts_var.get(),
