@@ -202,7 +202,17 @@ class App:
         self.progress.stop()
         self.btn.config(state="normal")
         self.status_var.set("Error.")
-        messagebox.showerror("Error", f"Something went wrong:\n\n{error_msg}")
+
+        # Custom error dialog with copyable text
+        win = tk.Toplevel(self.root)
+        win.title("Error")
+        win.grab_set()
+        tk.Label(win, text="Something went wrong:", fg="red").pack(padx=10, pady=(10, 0))
+        txt = tk.Text(win, wrap="word", width=70, height=15)
+        txt.insert("1.0", error_msg)
+        txt.config(state="disabled")
+        txt.pack(padx=10, pady=5)
+        tk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 10))
 
 
 if __name__ == "__main__":
