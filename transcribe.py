@@ -1,5 +1,7 @@
-import whisper
+import sys
 import os
+import traceback
+import whisper
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -188,7 +190,7 @@ class App:
             self.root.after(0, self.on_success, output_path, len(segments))
 
         except Exception as e:
-            self.root.after(0, self.on_error, str(e))
+            self.root.after(0, self.on_error, traceback.format_exc())
 
     def on_success(self, output_path, count):
         self.progress.stop()
