@@ -1,7 +1,14 @@
 import sys
 import os
+import io
 import traceback
 import whisper
+
+# PyInstaller sets stdout/stderr to None in windowed mode; tqdm crashes on it
+if sys.stdout is None:
+    sys.stdout = io.StringIO()
+if sys.stderr is None:
+    sys.stderr = io.StringIO()
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -57,9 +64,15 @@ class App:
         self.model_var = tk.StringVar(value="large")
         ttk.Combobox(root, values=MODELS, textvariable=self.model_var, width=10, state="readonly").grid(row=2, column=1, sticky="w", **pad)
 
+        # --- Clip duration ---
+        tk.Label(root, text="Clip (seconds):").grid(row=3, column=0, sticky="w", **pad)
+        self.clip_var = tk.StringVar(value="")
+        tk.Entry(root, textvariable=self.clip_var, width=10).grid(row=3, column=1, sticky="w", **pad)
+        tk.Label(root, text="(порожньо = весь файл)", fg="gray", font=("", 8)).grid(row=3, column=2, sticky="w")
+
         # --- Advanced settings toggle ---
         self.show_advanced = tk.BooleanVar(value=False)
-        tk.Checkbutton(root, text="Advanced model settings", variable=self.show_advanced, command=self.toggle_advanced).grid(row=3, column=0, columnspan=3, sticky="w", padx=10)
+        tk.Checkbutton(root, text="Advanced model settings", variable=self.show_advanced, command=self.toggle_advanced).grid(row=4, column=0, columnspan=3, sticky="w", padx=10)
 
         # --- Advanced frame ---
         self.adv_frame = tk.LabelFrame(root, text="Model parameters", padx=8, pady=5)
@@ -111,15 +124,15 @@ class App:
 
         # --- Start button ---
         self.btn = tk.Button(root, text="Start Transcription", command=self.start, bg="#4CAF50", fg="white", width=20)
-        self.btn.grid(row=5, column=0, columnspan=3, pady=10)
+        self.btn.grid(row=6, column=0, columnspan=3, pady=10)
 
         # --- Status ---
         self.status_var = tk.StringVar(value="Ready")
-        tk.Label(root, textvariable=self.status_var, fg="gray").grid(row=6, column=0, columnspan=3, **pad)
+        tk.Label(root, textvariable=self.status_var, fg="gray").grid(row=7, column=0, columnspan=3, **pad)
 
         # --- Progress bar ---
         self.progress = ttk.Progressbar(root, mode="indeterminate", length=400)
-        self.progress.grid(row=7, column=0, columnspan=3, **pad)
+        self.progress.grid(row=8, column=0, columnspan=3, **pad)
 
     def toggle_advanced(self):
         if self.show_advanced.get():
@@ -163,8 +176,10 @@ class App:
             no_speech = self.no_speech_var.get()
             logprob = self.logprob_var.get()
 
-            result = model.transcribe(
-                audio_path,
+            clip_raw = self.clip_var.get().strip()
+            clip_end = float(clip_raw) if clip_raw else None
+
+            transcribe_kwargs = dict(
                 language=lang_raw,
                 task="transcribe",
                 suppress_tokens=[],
@@ -176,6 +191,10 @@ class App:
                 fp16=self.fp16_var.get(),
                 verbose=False,
             )
+            if clip_end is not None:
+                transcribe_kwargs["clip_timestamps"] = [0, clip_end]
+
+            result = model.transcribe(audio_path, **transcribe_kwargs)
 
             segments = result["segments"]
             lines = []
