@@ -248,13 +248,25 @@ class App:
             else:
                 fragment_str = "весь файл"
 
+            no_speech_display = "inf (keep all)" if no_speech >= 1.0 else str(round(no_speech, 2))
+            logprob_display = "-inf (keep all)" if logprob <= -3.0 else str(round(logprob, 1))
+
             header = (
-                f"Файл:              {filename}\n"
-                f"Дата:              {now_str}\n"
-                f"Модель:            {model_name} | Мова: {lang_raw}\n"
-                f"Фрагмент:          {fragment_str}\n"
-                f"Час обробки:       {format_elapsed(elapsed)}\n"
-                f"Сегментів:         {len(segments)}\n"
+                f"Файл:                      {filename}\n"
+                f"Дата:                      {now_str}\n"
+                f"Час обробки:               {format_elapsed(elapsed)}\n"
+                f"Сегментів:                 {len(segments)}\n"
+                f"{'─' * 60}\n"
+                f"ПАРАМЕТРИ\n"
+                f"  Модель:                  {model_name}\n"
+                f"  Мова:                    {lang_raw}\n"
+                f"  Фрагмент:                {fragment_str}\n"
+                f"  no_speech_threshold:     {no_speech_display}\n"
+                f"  logprob_threshold:       {logprob_display}\n"
+                f"  compression_ratio:       {round(self.compression_var.get(), 1)}\n"
+                f"  condition_on_prev_text:  {self.condition_var.get()}\n"
+                f"  word_timestamps:         {self.word_ts_var.get()}\n"
+                f"  fp16:                    {self.fp16_var.get()}\n"
                 f"{'─' * 60}\n"
             )
 
