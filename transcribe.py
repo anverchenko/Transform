@@ -94,63 +94,44 @@ class App:
             if hint:
                 tk.Label(self.adv_frame, text=hint, fg="gray", font=("", 8)).grid(row=r, column=2, sticky="w", padx=5)
 
-        # temperature (0 = greedy/fastest, >0 = sampling)
-        self.temperature_var = tk.DoubleVar(value=0.0)
-        def make_temperature(r):
-            tk.Scale(self.adv_frame, variable=self.temperature_var, from_=0.0, to=1.0, resolution=0.1,
-                     orient="horizontal", length=200).grid(row=r, column=1)
-        adv_row("Temperature:", make_temperature, 0, "0 = greedy (fastest), >0 = random sampling")
-
-        # beam_size (1 = greedy, fastest)
-        self.beam_size_var = tk.StringVar(value="1")
-        def make_beam_size(r):
-            tk.Entry(self.adv_frame, textvariable=self.beam_size_var, width=6).grid(row=r, column=1, sticky="w")
-        adv_row("Beam size:", make_beam_size, 1, "1 = fastest (greedy), 5 = better quality")
-
-        # best_of
-        self.best_of_var = tk.StringVar(value="1")
-        def make_best_of(r):
-            tk.Entry(self.adv_frame, textvariable=self.best_of_var, width=6).grid(row=r, column=1, sticky="w")
-        adv_row("Best of:", make_best_of, 2, "Candidates per segment (only with temperature>0)")
-
         # no_speech_threshold
         self.no_speech_var = tk.DoubleVar(value=1.0)
         def make_no_speech(r):
             tk.Scale(self.adv_frame, variable=self.no_speech_var, from_=0.0, to=1.0, resolution=0.05,
                      orient="horizontal", length=200).grid(row=r, column=1)
-        adv_row("No speech threshold:", make_no_speech, 3, "Higher = keep more silent parts (1.0 = keep all)")
+        adv_row("No speech threshold:", make_no_speech, 0, "Higher = keep more silent parts (1.0 = keep all)")
 
         # logprob_threshold
         self.logprob_var = tk.DoubleVar(value=-3.0)
         def make_logprob(r):
             tk.Scale(self.adv_frame, variable=self.logprob_var, from_=-3.0, to=0.0, resolution=0.1,
                      orient="horizontal", length=200).grid(row=r, column=1)
-        adv_row("Logprob threshold:", make_logprob, 4, "Lower = accept low-confidence text")
+        adv_row("Logprob threshold:", make_logprob, 1, "Lower = accept low-confidence text")
 
         # compression_ratio_threshold
         self.compression_var = tk.DoubleVar(value=3.0)
         def make_compression(r):
             tk.Scale(self.adv_frame, variable=self.compression_var, from_=1.0, to=5.0, resolution=0.1,
                      orient="horizontal", length=200).grid(row=r, column=1)
-        adv_row("Compression ratio:", make_compression, 5, "Higher = allow mixed/varied content")
+        adv_row("Compression ratio:", make_compression, 2, "Higher = allow mixed/varied content")
 
         # condition_on_previous_text (off by default = faster)
         self.condition_var = tk.BooleanVar(value=False)
         def make_condition(r):
             tk.Checkbutton(self.adv_frame, variable=self.condition_var).grid(row=r, column=1, sticky="w")
-        adv_row("Use previous context:", make_condition, 6, "Helps coherence but slower")
+        adv_row("Use previous context:", make_condition, 3, "Helps coherence but slower")
 
         # word_timestamps (off by default = faster)
         self.word_ts_var = tk.BooleanVar(value=False)
         def make_word_ts(r):
             tk.Checkbutton(self.adv_frame, variable=self.word_ts_var).grid(row=r, column=1, sticky="w")
-        adv_row("Word timestamps:", make_word_ts, 7, "Precise timing per word (slower)")
+        adv_row("Word timestamps:", make_word_ts, 4, "Precise timing per word (slower)")
 
         # fp16
         self.fp16_var = tk.BooleanVar(value=False)
         def make_fp16(r):
             tk.Checkbutton(self.adv_frame, variable=self.fp16_var).grid(row=r, column=1, sticky="w")
-        adv_row("FP16 (GPU only):", make_fp16, 8, "Faster on GPU, disable for CPU")
+        adv_row("FP16 (GPU only):", make_fp16, 5, "Faster on GPU, disable for CPU")
 
         # --- Start button ---
         self.btn = tk.Button(root, text="Start Transcription", command=self.start, bg="#4CAF50", fg="white", width=20)
@@ -209,15 +190,6 @@ class App:
             # Parse advanced params
             no_speech = self.no_speech_var.get()
             logprob = self.logprob_var.get()
-            temperature = self.temperature_var.get()
-            try:
-                beam_size = max(1, int(self.beam_size_var.get()))
-            except ValueError:
-                beam_size = 1
-            try:
-                best_of = max(1, int(self.best_of_var.get()))
-            except ValueError:
-                best_of = 1
 
             self.status_var.set("Loading model...")
             model = whisper.load_model(model_name)
@@ -242,9 +214,6 @@ class App:
                 condition_on_previous_text=self.condition_var.get(),
                 word_timestamps=self.word_ts_var.get(),
                 fp16=self.fp16_var.get(),
-                temperature=temperature,
-                beam_size=beam_size if temperature == 0.0 else 1,
-                best_of=best_of if temperature > 0.0 else 1,
                 verbose=False,
             )
 
