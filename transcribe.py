@@ -179,9 +179,18 @@ class App:
             clip_raw = self.clip_var.get().strip()
             clip_end = float(clip_raw) if clip_raw else None
 
+            # Prompt tells Whisper to keep filler words verbatim
+            PROMPTS = {
+                "uk": "ну, ось, так, е, ем, а, і, й, от, це, воно, типу, короче",
+                "ru": "ну, вот, так, э, эм, а, и, это, типа, короче, значит",
+                "en": "um, uh, well, so, like, you know, I mean, actually",
+            }
+            initial_prompt = PROMPTS.get(lang_raw, "")
+
             transcribe_kwargs = dict(
                 language=lang_raw,
                 task="transcribe",
+                initial_prompt=initial_prompt,
                 suppress_tokens=[],
                 no_speech_threshold=float("inf") if no_speech >= 1.0 else no_speech,
                 logprob_threshold=float("-inf") if logprob <= -3.0 else logprob,
