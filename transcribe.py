@@ -2,6 +2,7 @@ import sys
 import os
 import io
 import time
+import datetime
 import traceback
 import whisper
 
@@ -37,6 +38,10 @@ def format_time(seconds):
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+def format_elapsed(seconds):
+    m, s = divmod(int(seconds), 60)
+    return f"{m}м {s}с" if m else f"{s}с"
+
 
 class App:
     def __init__(self, root):
@@ -60,16 +65,21 @@ class App:
         self.lang_combo.current(0)
         self.lang_combo.grid(row=1, column=1, sticky="w", **pad)
 
-        # --- Model ---
+        # --- Model --- (default: tiny = fastest)
         tk.Label(root, text="Model:").grid(row=2, column=0, sticky="w", **pad)
-        self.model_var = tk.StringVar(value="large")
+        self.model_var = tk.StringVar(value="tiny")
         ttk.Combobox(root, values=MODELS, textvariable=self.model_var, width=10, state="readonly").grid(row=2, column=1, sticky="w", **pad)
 
-        # --- Clip duration ---
-        tk.Label(root, text="Clip (seconds):").grid(row=3, column=0, sticky="w", **pad)
-        self.clip_var = tk.StringVar(value="")
-        tk.Entry(root, textvariable=self.clip_var, width=10).grid(row=3, column=1, sticky="w", **pad)
-        tk.Label(root, text="(порожньо = весь файл)", fg="gray", font=("", 8)).grid(row=3, column=2, sticky="w")
+        # --- Clip range: from / to ---
+        clip_frame = tk.Frame(root)
+        clip_frame.grid(row=3, column=0, columnspan=3, sticky="w", padx=10, pady=5)
+        tk.Label(clip_frame, text="Від секунди:").pack(side="left")
+        self.clip_start_var = tk.StringVar(value="")
+        tk.Entry(clip_frame, textvariable=self.clip_start_var, width=8).pack(side="left", padx=(4, 12))
+        tk.Label(clip_frame, text="По секунду:").pack(side="left")
+        self.clip_end_var = tk.StringVar(value="")
+        tk.Entry(clip_frame, textvariable=self.clip_end_var, width=8).pack(side="left", padx=(4, 12))
+        tk.Label(clip_frame, text="(порожньо = весь файл)", fg="gray", font=("", 8)).pack(side="left")
 
         # --- Advanced settings toggle ---
         self.show_advanced = tk.BooleanVar(value=False)
@@ -78,50 +88,69 @@ class App:
         # --- Advanced frame ---
         self.adv_frame = tk.LabelFrame(root, text="Model parameters", padx=8, pady=5)
 
-        def row(label, widget_fn, r, hint=""):
+        def adv_row(label, widget_fn, r, hint=""):
             tk.Label(self.adv_frame, text=label).grid(row=r, column=0, sticky="w", pady=2)
             widget_fn(r)
             if hint:
                 tk.Label(self.adv_frame, text=hint, fg="gray", font=("", 8)).grid(row=r, column=2, sticky="w", padx=5)
+
+        # temperature (0 = greedy/fastest, >0 = sampling)
+        self.temperature_var = tk.DoubleVar(value=0.0)
+        def make_temperature(r):
+            tk.Scale(self.adv_frame, variable=self.temperature_var, from_=0.0, to=1.0, resolution=0.1,
+                     orient="horizontal", length=200).grid(row=r, column=1)
+        adv_row("Temperature:", make_temperature, 0, "0 = greedy (fastest), >0 = random sampling")
+
+        # beam_size (1 = greedy, fastest)
+        self.beam_size_var = tk.StringVar(value="1")
+        def make_beam_size(r):
+            tk.Entry(self.adv_frame, textvariable=self.beam_size_var, width=6).grid(row=r, column=1, sticky="w")
+        adv_row("Beam size:", make_beam_size, 1, "1 = fastest (greedy), 5 = better quality")
+
+        # best_of
+        self.best_of_var = tk.StringVar(value="1")
+        def make_best_of(r):
+            tk.Entry(self.adv_frame, textvariable=self.best_of_var, width=6).grid(row=r, column=1, sticky="w")
+        adv_row("Best of:", make_best_of, 2, "Candidates per segment (only with temperature>0)")
 
         # no_speech_threshold
         self.no_speech_var = tk.DoubleVar(value=1.0)
         def make_no_speech(r):
             tk.Scale(self.adv_frame, variable=self.no_speech_var, from_=0.0, to=1.0, resolution=0.05,
                      orient="horizontal", length=200).grid(row=r, column=1)
-        row("No speech threshold:", make_no_speech, 0, "Higher = keep more silent parts (1.0 = keep all)")
+        adv_row("No speech threshold:", make_no_speech, 3, "Higher = keep more silent parts (1.0 = keep all)")
 
         # logprob_threshold
         self.logprob_var = tk.DoubleVar(value=-3.0)
         def make_logprob(r):
             tk.Scale(self.adv_frame, variable=self.logprob_var, from_=-3.0, to=0.0, resolution=0.1,
                      orient="horizontal", length=200).grid(row=r, column=1)
-        row("Logprob threshold:", make_logprob, 1, "Lower = accept low-confidence text")
+        adv_row("Logprob threshold:", make_logprob, 4, "Lower = accept low-confidence text")
 
         # compression_ratio_threshold
         self.compression_var = tk.DoubleVar(value=3.0)
         def make_compression(r):
             tk.Scale(self.adv_frame, variable=self.compression_var, from_=1.0, to=5.0, resolution=0.1,
                      orient="horizontal", length=200).grid(row=r, column=1)
-        row("Compression ratio:", make_compression, 2, "Higher = allow mixed/varied content")
+        adv_row("Compression ratio:", make_compression, 5, "Higher = allow mixed/varied content")
 
-        # condition_on_previous_text
-        self.condition_var = tk.BooleanVar(value=True)
+        # condition_on_previous_text (off by default = faster)
+        self.condition_var = tk.BooleanVar(value=False)
         def make_condition(r):
             tk.Checkbutton(self.adv_frame, variable=self.condition_var).grid(row=r, column=1, sticky="w")
-        row("Use previous context:", make_condition, 3, "Helps coherence between segments")
+        adv_row("Use previous context:", make_condition, 6, "Helps coherence but slower")
 
-        # word_timestamps
-        self.word_ts_var = tk.BooleanVar(value=True)
+        # word_timestamps (off by default = faster)
+        self.word_ts_var = tk.BooleanVar(value=False)
         def make_word_ts(r):
             tk.Checkbutton(self.adv_frame, variable=self.word_ts_var).grid(row=r, column=1, sticky="w")
-        row("Word timestamps:", make_word_ts, 4, "Precise timing per word")
+        adv_row("Word timestamps:", make_word_ts, 7, "Precise timing per word (slower)")
 
         # fp16
         self.fp16_var = tk.BooleanVar(value=False)
         def make_fp16(r):
             tk.Checkbutton(self.adv_frame, variable=self.fp16_var).grid(row=r, column=1, sticky="w")
-        row("FP16 (GPU only):", make_fp16, 5, "Faster on GPU, disable for CPU")
+        adv_row("FP16 (GPU only):", make_fp16, 8, "Faster on GPU, disable for CPU")
 
         # --- Start button ---
         self.btn = tk.Button(root, text="Start Transcription", command=self.start, bg="#4CAF50", fg="white", width=20)
@@ -137,7 +166,7 @@ class App:
 
     def toggle_advanced(self):
         if self.show_advanced.get():
-            self.adv_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+            self.adv_frame.grid(row=5, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
         else:
             self.adv_frame.grid_remove()
 
@@ -158,7 +187,6 @@ class App:
             messagebox.showerror("Error", f"File not found:\n{audio_path}")
             return
 
-        # Run in background thread so UI doesn't freeze
         self.btn.config(state="disabled")
         self.progress.start(10)
         self.status_var.set("Working...")
@@ -167,21 +195,35 @@ class App:
 
     def run(self, audio_path):
         try:
-            lang_raw = self.lang_var.get().split(" — ")[0]  # extract code like "uk"
+            t_start = time.time()  # total time including model load
+
+            lang_raw = self.lang_var.get().split(" — ")[0]
             model_name = self.model_var.get()
+
+            # Parse clip range
+            clip_start_raw = self.clip_start_var.get().strip()
+            clip_end_raw = self.clip_end_var.get().strip()
+            clip_start = float(clip_start_raw) if clip_start_raw else None
+            clip_end = float(clip_end_raw) if clip_end_raw else None
+
+            # Parse advanced params
+            no_speech = self.no_speech_var.get()
+            logprob = self.logprob_var.get()
+            temperature = self.temperature_var.get()
+            try:
+                beam_size = max(1, int(self.beam_size_var.get()))
+            except ValueError:
+                beam_size = 1
+            try:
+                best_of = max(1, int(self.best_of_var.get()))
+            except ValueError:
+                best_of = 1
 
             self.status_var.set("Loading model...")
             model = whisper.load_model(model_name)
 
             self.status_var.set("Transcribing...")
-            t_start = time.time()
-            no_speech = self.no_speech_var.get()
-            logprob = self.logprob_var.get()
 
-            clip_raw = self.clip_var.get().strip()
-            clip_end = float(clip_raw) if clip_raw else None
-
-            # Prompt tells Whisper to keep filler words verbatim
             PROMPTS = {
                 "uk": "ну, ось, так, е, ем, а, і, й, от, це, воно, типу, короче",
                 "ru": "ну, вот, так, э, эм, а, и, это, типа, короче, значит",
@@ -200,46 +242,74 @@ class App:
                 condition_on_previous_text=self.condition_var.get(),
                 word_timestamps=self.word_ts_var.get(),
                 fp16=self.fp16_var.get(),
+                temperature=temperature,
+                beam_size=beam_size if temperature == 0.0 else 1,
+                best_of=best_of if temperature > 0.0 else 1,
                 verbose=False,
             )
-            if clip_end is not None:
-                transcribe_kwargs["clip_timestamps"] = [0, clip_end]
+
+            # Build clip_timestamps: [start, end] in seconds
+            if clip_start is not None or clip_end is not None:
+                cs = clip_start if clip_start is not None else 0.0
+                # end=None means transcribe to file end — omit upper bound
+                if clip_end is not None:
+                    transcribe_kwargs["clip_timestamps"] = [cs, clip_end]
+                else:
+                    transcribe_kwargs["clip_timestamps"] = [cs]
 
             result = model.transcribe(audio_path, **transcribe_kwargs)
+            elapsed = time.time() - t_start
 
             segments = result["segments"]
             lines = []
             for seg in segments:
-                start = format_time(seg["start"])
-                end   = format_time(seg["end"])
-                text  = seg["text"].strip()
+                s = format_time(seg["start"])
+                e = format_time(seg["end"])
+                text = seg["text"].strip()
                 if text:
-                    lines.append(f"[{start} → {end}]  {text}")
+                    lines.append(f"[{s} → {e}]  {text}")
+
+            # Build log header
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            filename = os.path.basename(audio_path)
+            if clip_start is not None or clip_end is not None:
+                cs_str = format_time(clip_start or 0)
+                ce_str = format_time(clip_end) if clip_end else "кінець"
+                fragment_str = f"{cs_str} → {ce_str}"
+            else:
+                fragment_str = "весь файл"
+
+            header = (
+                f"Файл:              {filename}\n"
+                f"Дата:              {now_str}\n"
+                f"Модель:            {model_name} | Мова: {lang_raw}\n"
+                f"Фрагмент:          {fragment_str}\n"
+                f"Час обробки:       {format_elapsed(elapsed)}\n"
+                f"Сегментів:         {len(segments)}\n"
+                f"{'─' * 60}\n"
+            )
 
             output_path = os.path.splitext(audio_path)[0] + "_transcription.txt"
             with open(output_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(lines))
+                f.write(header + "\n".join(lines))
 
-            elapsed = int(time.time() - t_start)
             self.root.after(0, self.on_success, output_path, len(segments), elapsed)
 
-        except Exception as e:
+        except Exception:
             self.root.after(0, self.on_error, traceback.format_exc())
 
     def on_success(self, output_path, count, elapsed):
         self.progress.stop()
         self.btn.config(state="normal")
-        m, s = divmod(elapsed, 60)
-        time_str = f"{m}м {s}с" if m else f"{s}с"
+        time_str = format_elapsed(elapsed)
         self.status_var.set(f"Done! {count} segments — {time_str}")
-        messagebox.showinfo("Done!", f"Transcription complete!\n\n{count} segments\nTime: {time_str}\n\nSaved to:\n{output_path}")
+        messagebox.showinfo("Done!", f"Transcription complete!\n\n{count} segments\nTotal time: {time_str}\n\nSaved to:\n{output_path}")
 
     def on_error(self, error_msg):
         self.progress.stop()
         self.btn.config(state="normal")
         self.status_var.set("Error.")
 
-        # Custom error dialog with copyable text
         win = tk.Toplevel(self.root)
         win.title("Error")
         win.grab_set()
