@@ -1,6 +1,7 @@
 import sys
 import os
 import io
+import time
 import traceback
 import whisper
 
@@ -173,6 +174,7 @@ class App:
             model = whisper.load_model(model_name)
 
             self.status_var.set("Transcribing...")
+            t_start = time.time()
             no_speech = self.no_speech_var.get()
             logprob = self.logprob_var.get()
 
@@ -218,16 +220,19 @@ class App:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))
 
-            self.root.after(0, self.on_success, output_path, len(segments))
+            elapsed = int(time.time() - t_start)
+            self.root.after(0, self.on_success, output_path, len(segments), elapsed)
 
         except Exception as e:
             self.root.after(0, self.on_error, traceback.format_exc())
 
-    def on_success(self, output_path, count):
+    def on_success(self, output_path, count, elapsed):
         self.progress.stop()
         self.btn.config(state="normal")
-        self.status_var.set(f"Done! {count} segments saved.")
-        messagebox.showinfo("Done!", f"Transcription complete!\n\nSaved to:\n{output_path}")
+        m, s = divmod(elapsed, 60)
+        time_str = f"{m}м {s}с" if m else f"{s}с"
+        self.status_var.set(f"Done! {count} segments — {time_str}")
+        messagebox.showinfo("Done!", f"Transcription complete!\n\n{count} segments\nTime: {time_str}\n\nSaved to:\n{output_path}")
 
     def on_error(self, error_msg):
         self.progress.stop()
