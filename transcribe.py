@@ -288,7 +288,10 @@ class App:
                 f"{'─' * 60}\n"
             )
 
-            output_path = os.path.splitext(audio_path)[0] + "_transcription.txt"
+            base_name = os.path.splitext(audio_path)[0]
+            start_str = str(int(clip_start)) if clip_start is not None else "0"
+            end_str = str(int(clip_end)) if clip_end is not None else "кінець"
+            output_path = f"{base_name}_{model_name}_{start_str}-{end_str}.txt"
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(header + "\n".join(lines))
 
