@@ -44,14 +44,6 @@ LANGUAGES = {
 
 MODELS = ["tiny", "base", "small", "medium", "large"]
 
-TRANSLATE_PROMPT = (
-    "Translate literally. No synonyms, no paraphrasing, no smoothing. "
-    "Reflect the exact nature of speech: unfinished sentences, self-interruptions, repetitions, "
-    "colloquial words, slang, filler words — render with equivalent colloquial English. "
-    "Profanity and swearing must be translated directly, in the same register, without euphemisms or asterisks. "
-    "If a word cannot be adequately translated, keep the original word. "
-    "Do not add, remove, or infer anything beyond what was said."
-)
 
 def format_time(seconds):
     h = int(seconds // 3600)
@@ -93,7 +85,7 @@ class App:
 
         # --- Clip range: from / to ---
         clip_frame = tk.Frame(root)
-        clip_frame.grid(row=2, column=0, columnspan=3, sticky="w", padx=10, pady=5)
+        clip_frame.grid(row=3, column=0, columnspan=3, sticky="w", padx=10, pady=5)
         tk.Label(clip_frame, text="Від секунди:").pack(side="left")
         self.clip_start_var = tk.StringVar(value="")
         tk.Entry(clip_frame, textvariable=self.clip_start_var, width=8).pack(side="left", padx=(4, 12))
@@ -101,10 +93,6 @@ class App:
         self.clip_end_var = tk.StringVar(value="")
         tk.Entry(clip_frame, textvariable=self.clip_end_var, width=8).pack(side="left", padx=(4, 12))
         tk.Label(clip_frame, text="(порожньо = весь файл)", fg="gray", font=("", 8)).pack(side="left")
-
-        # --- Translate to English ---
-        self.translate_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(root, text="Translate to English (literal)", variable=self.translate_var).grid(row=3, column=0, columnspan=3, sticky="w", padx=10)
 
         # --- Advanced settings toggle ---
         self.show_advanced = tk.BooleanVar(value=False)
@@ -205,7 +193,6 @@ class App:
 
             lang_raw = self.lang_var.get().split(" — ")[0]
             model_name = self.model_var.get()
-            do_translate = self.translate_var.get()
 
             # Parse clip range
             clip_start_raw = self.clip_start_var.get().strip()
@@ -228,20 +215,15 @@ class App:
             self.status_var.set("Transcribing...")
 
             PROMPTS = {
-                "uk": "ну, ось, так, е, ем, а, і, й, от, це, воно, типу, короче",
-                "ru": "ну, вот, так, э, эм, а, и, это, типа, короче, значит",
-                "en": "um, uh, well, so, like, you know, I mean, actually",
+                "uk": "ну, ось, так, е, ем, а, і, й, от, це, воно, типу, короче, блін, чорт, от халепа, йой, та ну, да, шо, во, оце, нуу, ееее, ммм, тіпа, корочє, єлі, ладно, окей, стоп, погоді, слухай, розумієш, бачиш, знаєш, так от, во во, ну і, і шо, а шо, та шо ти",
+                "ru": "ну, вот, так, э, эм, а, и, это, типа, короче, значит, блин, чёрт, да ладно, ёлки, стоп, погоди, слушай, понимаешь, видишь, знаешь, вот так, ну и, и что, а что, да что ты",
+                "en": "um, uh, well, so, like, you know, I mean, actually, right, okay, yeah, nah, gonna, wanna, gotta, kinda, sorta, lemme, gimme",
             }
-            if do_translate:
-                initial_prompt = TRANSLATE_PROMPT
-                task = "translate"
-            else:
-                initial_prompt = PROMPTS.get(lang_raw, "")
-                task = "transcribe"
+            initial_prompt = PROMPTS.get(lang_raw, "")
 
             transcribe_kwargs = dict(
                 language=lang_raw,
-                task=task,
+                task="transcribe",
                 initial_prompt=initial_prompt,
                 suppress_tokens=[],
                 no_speech_threshold=float("inf") if no_speech >= 1.0 else no_speech,
@@ -296,7 +278,6 @@ class App:
                 f"ПАРАМЕТРИ\n"
                 f"  Модель:                  {model_name}\n"
                 f"  Мова:                    {lang_raw}\n"
-                f"  Режим:                   {'переклад → EN (literal)' if do_translate else 'транскрипція'}\n"
                 f"  Фрагмент:                {fragment_str}\n"
                 f"  no_speech_threshold:     {no_speech_display}\n"
                 f"  logprob_threshold:       {logprob_display}\n"
